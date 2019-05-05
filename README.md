@@ -1,55 +1,80 @@
-### Pre-Requirements
+### Consumer Step 1 (Creating the first contract)
 
-- Fork this github repository into your account (You will find a "fork" icon on the top right corner)
-- Clone the forked repository that exists in **your github account** into your local machine
+Although all the tests are passing, there is a bug introduced on purpose in `spec/payment_service_client_spec.rb`. Can you spot it?
 
-The directory structure needs to be as follows (both projects need to be cloned in the same parent directory):
+The PaymentService API returns a response that contains a payment method `status`, but the test has incorrectly assumed that the response contains a `state` field.
 
-```bash
-drwxr-xr-x - user  7 Jun 17:56 pact-workshop-consumer
-drwxr-xr-x - user  7 Jun 18:01 pact-workshop-provider
+The unit test that lives in `spec/payment_service_client_spec.rb` is pretty much useless.
+
+If there is a change in the provider API, the test will continue to pass, but the communication between the consumer and the provider will be broken.
+
+At this stage we have 3 alternatives to workaround this issue:
+
+  1. Create an End to End test that involves the consumer and the provider (PaymentService)
+  2. Create an Integration test for the API that PaymentService is exposing
+  3. Implement a Contract test
+
+Creating and E2E test is expensive since in a CD environment you will need to have instances of both microservices running in order to execute the test.
+
+Creating an Integration test for the API that PaymentService is exposing is a good alternative but it has some drawbacks.
+
+  - If the test is written in the provider side, if the API changes it is going to be difficult to make the consumer aware of the change
+  - If the test is written on the consumer side, you will need an instance of the provider (PaymentService) running in order to be able to execute the test
+
+We will explore Option 3, and we will implement a Contract test using [Pact](https://docs.pact.io/)
+___
+
+Create this file `spec/pact_helper.rb` with the following content
+
+```ruby
+require 'pact/consumer/rspec'
+
+Pact.service_consumer "PaymentServiceClient" do
+  has_pact_with "PaymentService" do
+    mock_service :payment_service do
+      host "localhost"
+      port 4567
+    end
+  end
+end
 ```
 
-### Requirements
+With this `pact_helper` file, we are configuring Pact in the consumer.
 
-- Ruby 2.3+ (It is already installed if you are using Mac OS X).
+When a Pact test is run, Pact will intercept the HTTP requests happening against `localhost:4567` (based on this configuration) and it will return the predefined responses specified in the test. The value `localhost:4567` is used here because that is the value that we use as a default if the `PAYMENT_SERVICE_ENDPOINT` environment variable is not set. You can take a look at `PaymentServiceClient` class in `lib/payment_service_client.rb` file to see how this is done.
 
-### Consumer Step 0 (Setup)
+Pact will create a contract based on the expectations declared in the tests and the contract will be used in the provider side for its verification.
 
-#### Ruby
+Replace `spec/payment_service_client_spec.rb` with the following content in order to convert the previous unit test to a Pact contract test.
 
-Check your ruby version with `ruby --version`
+```ruby
+require "pact_helper"
+require "payment_service_client"
 
-If you need to install ruby follow the instructions on [rvm.io](https://rvm.io/rvm/install)
+RSpec.describe PaymentServiceClient, pact: true do
+  let(:payment_method) { "1234123412341234" }
+  let(:response_body) do { state: :valid } end
 
-#### Bundler
+  before do
+    payment_service
+      .upon_receiving("a request for validating a payment method")
+      .with(method: :get, path: "/validate-payment-method/#{payment_method}")
+      .will_respond_with(
+        status: 200,
+        headers: {"Content-Type" => "application/json"},
+        body: response_body
+      )
+  end
 
-Install bundler 1.17.2 if you don't have it already installed
+  it "calls payment service to validate payment method" do
+    expect(subject.validate(payment_method)).to eql({ "state" => "valid" })
+  end
+end
+```
 
-`sudo gem install bundler -v 1.17.2`
+Notice how we added the `pact: true` parameters in the describe block to allow Pact to identify this test as a Pact test.
 
-Verify that you have the right version by running `bundler --version`
+Run the tests with `rspec`. At this stage a new contract should be generated in the `spec/pacts` directory.
+Take a look at the content of the file in JSON format that contains the contract definition.
 
-If you have more recent versions of bundler, uninstall them with `gem uninstall bundler` until the most up to date and default version of bundler is 1.17.2
-
-### Install dependencies
-
-- Navigate to the `pact-workshop-consumer` directory and execute `bundle install`
-
-### Run the tests
-
-- Execute `rspec`
-
-Get familiarised with the code
-
-![System diagram](resources/system-diagram.png "System diagram")
-
-You can run this app by executing `bundle exec rackup config.ru -p 3000` and then navigate to locahost:3000
-
-There are two microservices in this system. A `consumer` (this repository) and a `provider`.
-
-The "provider" is a PaymentService that validates if a credit card number is valid in the context of that system.
-
-The "consumer" only makes requests to PaymentService to verify payment methods.
-
-Run `git checkout consumer-step1` and follow the instructions in this readme file
+Navigate to the directory in where you checked out `pact-workshop-provider`, run `git checkout provider-step1` and follow the instructions in the **Provider's** readme file
