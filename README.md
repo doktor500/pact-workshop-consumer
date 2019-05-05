@@ -479,3 +479,79 @@ The second job named `deploy` depends on the `build` job and it is only executed
   - If the deployment can happen, it deploys and updates the `production` tag in the broker
 
 Navigate to the directory in where you checked out `pact-workshop-provider`, run `git clean -df && git checkout . && git checkout provider-step4` and follow the instructions in the **Provider's** readme file
+
+### Consumer Step 5 (Deploy)
+
+Now that the provider API is deployed, we are ready to start the journey to deploy our consumer.
+
+#### Creating hooks in the broker to automate contract publication and verification
+
+First of all we need to setup some hooks in the pact-broker. We are going to setup a global hook, and another hook that is specific to the branch that we are developing in this consumer app.
+
+The first hook that we need to create is a global hook that acts on the `contract_content_changed` event. So whenever a contract is published or changed by a consumer, the `build` step for the provider's master branch will be triggered on circleci. This way, every time a contract is published or changed, we will in an automated way know if the provider already supports the functionality required by the consumer that generated the event.
+
+To create the global hook, execute the following curl request.
+
+```bash
+curl \
+  --header "Content-Type: application/json" \
+  --header "Authorization: Bearer $PACT_BROKER_TOKEN" \
+  --request POST "$PACT_BROKER_BASE_URL/webhooks/provider/PaymentService/consumer/PaymentServiceClient" \
+  --data '{
+    "events": [{"name": "contract_content_changed"}],
+    "request": {
+      "method": "POST",
+      "headers": { "Content-Type": "application/json" },
+      "username": "'$CIRCLECI_API_TOKEN'",
+      "url": "https://circleci.com/api/v1.1/project/github/'$GITHUB_USER'/pact-workshop-provider/tree/master",
+      "body": {
+        "build_parameters": {"CIRCLE_JOB": "verify"}
+      }
+    }
+  }'
+```
+
+You should receive a successful JSON response back from the broker.
+
+Now let's create the hook that is specific to the consumer branch that we are about to deploy.
+
+```bash
+curl \
+	--header "Content-Type: application/json" \
+	--header "Authorization: Bearer $PACT_BROKER_TOKEN" \
+	--request POST "$PACT_BROKER_BASE_URL/webhooks/provider/PaymentService/consumer/PaymentServiceClient" \
+	--data '{
+	  "events": [{"name": "provider_verification_published"}],
+	  "request": {
+	    "method": "POST",
+	    "headers": { "Content-Type": "application/json" },
+	    "username": "'$CIRCLECI_API_TOKEN'",
+	    "url": "https://circleci.com/api/v1.1/project/github/'$GITHUB_USER'/pact-workshop-consumer/tree/consumer-step5",
+	    "body": {
+	      "build_parameters": {"CIRCLE_JOB": "build"}
+	    }
+	  }
+	}'
+```
+
+You should receive a successful JSON response back from the broker.
+
+By creating this hook, once the provider successfully verifies the contract published by this consumer, the circleci `build` step will be run for the current branch in our consumer app and we will know that it is safe to merge this feature branch to master for deploying it.
+
+#### Deploying a consumer's feature branch
+
+Now, let's open a pull request on github for the current branch, a few things will happen:
+
+- A build on circleci will be triggered for this branch. You should see a github yellow icon highlighting that the build is running.
+- This publishes the contract to the broker but it will fail on the verification step. You should see a github red icon highlighting that the build failed. The verification step fails because at this stage the provider has not yet verified this contract.
+- Since a new contract has been published and the global hook is in place, a `contract_content_changed` event is triggered and a build for the provider's master branch will occur. You should be able to see this on circleci. Once this build step runs in the provider side, the contract will be succesfully verified.
+- The provider publishes the verification of the contract to the broker and at this stage the hook for the `provider_verification_published` event will be triggered.
+- A new build for the consumer's feature branch will run again and at this stage the build will finish successfully. You should see a github green icon highlighting that the feature branch can now be merged to master.
+
+Once the build in the feature branch is green, merge the pull request to master.
+
+Go to circleci and see how the different CD steps are executed. You should see 2 CD steps: `build` and `deploy`. Wait until all the steps have completed successfully.
+
+Once all the steps have finshed, navigate to the following URL `https://pact-consumer-$GITHUB_USER.herokuapp.com/` replacing $GITHUB_USER with your github user name.
+
+Congratulations, your web application is up and running and it should be able to call the provider API, you can verify it by trying to validate on the UI valid and invalid credit card numbers
