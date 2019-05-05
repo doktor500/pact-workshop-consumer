@@ -1,55 +1,63 @@
-### Pre-Requirements
+### Consumer Step 2 (Using provider state)
 
-- Fork this github repository into your account (You will find a "fork" icon on the top right corner)
-- Clone the forked repository that exists in **your github account** into your local machine
+In our PaymentService API we want now to keep track of payment methods that are suspected to be fraudulent, by adding them to a list of blacklisted payment methods.
 
-The directory structure needs to be as follows (both projects need to be cloned in the same parent directory):
+In our consumer tests, we want to verify that when we call our PaymentService with an invalid payment method, the response returned by the API states that the payment is invalid.
 
-```bash
-drwxr-xr-x - user  7 Jun 17:56 pact-workshop-consumer
-drwxr-xr-x - user  7 Jun 18:01 pact-workshop-provider
+In order to try this scenario out, we would need somehow to have a predefined state in our PaymentService with invalid pre-registered payment methods.
+
+Let's start defining the test from the point of view of the consumer for this scenario.
+
+Go to `spec/payment_service_client_spec.rb` and copy paste this test suite:
+
+```ruby
+require "pact_helper"
+require "payment_service_client"
+
+RSpec.describe PaymentServiceClient, pact: true do
+  context "given a valid payment method" do
+    let(:valid_payment_method) { "1234123412341234" }
+    let(:response_body) do { status: :valid } end
+    before do
+      payment_service
+        .upon_receiving("a request for validating a payment method")
+        .with(method: :get, path: "/validate-payment-method/#{valid_payment_method}")
+        .will_respond_with(
+          status: 200,
+          headers: {"Content-Type" => "application/json"},
+          body: response_body
+        )
+    end
+
+    it "the call to payment service returns a payment status response with status equal to valid" do
+      expect(subject.validate(valid_payment_method)).to eql({ "status" => "valid" })
+    end
+  end
+
+  context "given a black listed payment method" do
+    let(:invalid_payment_method) { "9999999999999999" }
+    let(:response_body) do { status: :fraud } end
+    before do
+      payment_service
+        .given("a black listed payment method")
+        .upon_receiving("a request for validating the payment method")
+        .with(method: :get, path: "/validate-payment-method/#{invalid_payment_method}")
+        .will_respond_with(
+          status: 200,
+          headers: {"Content-Type" => "application/json"},
+          body: response_body
+        )
+    end
+
+    it "the call to payment service returns a payment status response with status equal to fraud" do
+      expect(subject.validate(invalid_payment_method)).to eql({ "status" => "fraud" })
+    end
+  end
+end
 ```
 
-### Requirements
+Take a look at the second test, note that the `before` block contains now a new `given("...")` section.
 
-- Ruby 2.3+ (It is already installed if you are using Mac OS X).
+Run `rspec` in the `pact-workshop-consumer` directory in order to update the consumer pacts and see the new pact in the `spec/pacts/paymentserviceclient-paymentservice.json` file.
 
-### Consumer Step 0 (Setup)
-
-#### Ruby
-
-Check your ruby version with `ruby --version`
-
-If you need to install ruby follow the instructions on [rvm.io](https://rvm.io/rvm/install)
-
-#### Bundler
-
-Install bundler 1.17.2 if you don't have it already installed
-
-`sudo gem install bundler -v 1.17.2`
-
-Verify that you have the right version by running `bundler --version`
-
-If you have more recent versions of bundler, uninstall them with `gem uninstall bundler` until the most up to date and default version of bundler is 1.17.2
-
-### Install dependencies
-
-- Navigate to the `pact-workshop-consumer` directory and execute `bundle install`
-
-### Run the tests
-
-- Execute `rspec`
-
-Get familiarised with the code
-
-![System diagram](resources/system-diagram.png "System diagram")
-
-You can run this app by executing `bundle exec rackup config.ru -p 3000` and then navigate to locahost:3000
-
-There are two microservices in this system. A `consumer` (this repository) and a `provider`.
-
-The "provider" is a PaymentService that validates if a credit card number is valid in the context of that system.
-
-The "consumer" only makes requests to PaymentService to verify payment methods.
-
-Run `git checkout consumer-step1` and follow the instructions in this readme file
+Navigate to the directory in where you checked out `pact-workshop-provider`, run `git clean -df && git checkout . && git checkout provider-step2`.
