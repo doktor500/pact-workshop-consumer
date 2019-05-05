@@ -1,55 +1,48 @@
-### Pre-Requirements
+### Consumer Step 3 (Working with a PACT broker)
 
-- Fork this github repository into your account (You will find a "fork" icon on the top right corner)
-- Clone the forked repository that exists in **your github account** into your local machine
+#### Publish contracts to the pact-broker
 
-The directory structure needs to be as follows (both projects need to be cloned in the same parent directory):
+In the `pact-workshop-consumer` directory add `gem "pact_broker-client"` gem to the `Gemfile`, the file should look like:
 
-```bash
-drwxr-xr-x - user  7 Jun 17:56 pact-workshop-consumer
-drwxr-xr-x - user  7 Jun 18:01 pact-workshop-provider
+```ruby
+source 'https://rubygems.org'
+
+gem 'httparty'
+gem 'rack'
+gem 'rake'
+gem 'sinatra'
+
+group :development, :test do
+  gem 'pact'
+  gem 'pact_broker-client'
+  gem 'rack-test'
+  gem 'rspec'
+  gem 'rspec_junit_formatter'
+end
 ```
 
-### Requirements
+In the `pact-workshop-consumer` directory execute `bundle install`
 
-- Ruby 2.3+ (It is already installed if you are using Mac OS X).
+Also in the `pact-workshop-consumer` create a `Rakefile` with the following content in order to publish the pacts to the broker.
 
-### Consumer Step 0 (Setup)
+```ruby
+require 'pact_broker/client/tasks'
 
-#### Ruby
+PACT_BROKER_BASE_URL = ENV["PACT_BROKER_BASE_URL"] || "http://localhost:8000"
+PACT_BROKER_TOKEN    = ENV["PACT_BROKER_TOKEN"]
 
-Check your ruby version with `ruby --version`
+git_commit = `git rev-parse HEAD`.strip
 
-If you need to install ruby follow the instructions on [rvm.io](https://rvm.io/rvm/install)
+PactBroker::Client::PublicationTask.new do |task|
+  task.pact_broker_base_url = PACT_BROKER_BASE_URL
+  task.pact_broker_token    = PACT_BROKER_TOKEN
+  task.consumer_version     = git_commit
+  task.tag_with_git_branch  = true
+end
+```
 
-#### Bundler
+If you have a broker running on [localhost](http://localhost:8000), publish the contract to the broker running `rake pact:publish` otherwise run `PACT_BROKER_BASE_URL=$PACT_BROKER_BASE_URL rake pact:publish` if you want to publish the contract to a different broker.
 
-Install bundler 1.17.2 if you don't have it already installed
+Navigate to the broker URL to see the contract published.
 
-`sudo gem install bundler -v 1.17.2`
-
-Verify that you have the right version by running `bundler --version`
-
-If you have more recent versions of bundler, uninstall them with `gem uninstall bundler` until the most up to date and default version of bundler is 1.17.2
-
-### Install dependencies
-
-- Navigate to the `pact-workshop-consumer` directory and execute `bundle install`
-
-### Run the tests
-
-- Execute `rspec`
-
-Get familiarised with the code
-
-![System diagram](resources/system-diagram.png "System diagram")
-
-You can run this app by executing `bundle exec rackup config.ru -p 3000` and then navigate to locahost:3000
-
-There are two microservices in this system. A `consumer` (this repository) and a `provider`.
-
-The "provider" is a PaymentService that validates if a credit card number is valid in the context of that system.
-
-The "consumer" only makes requests to PaymentService to verify payment methods.
-
-Run `git checkout consumer-step1` and follow the instructions in this readme file
+Navigate to the directory in where you checked out `pact-workshop-provider`, run `git clean -df && git checkout . && git checkout provider-step3` and follow the instructions in the **Provider's** readme file
