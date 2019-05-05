@@ -38,10 +38,6 @@ Checkout the [Provider](https://github.com/doktor500/pact-workshop-provider/) mi
 
 Run `git checkout consumer-step1` and follow the instructions in this readme file
 
-<<<<<<< HEAD
-=======
-
->>>>>>> Update readme
 ### Consumer Step 1 (Creating the first contract)
 
 Although all the tests are passing, there is a bug introduced on purpose in `spec/payment_service_client_spec.rb`. Can you spot it?
@@ -222,3 +218,148 @@ end
 Now run `rake pact:publish` and navigate to `localhost:8000`, you should see the contract been published.
 
 Navigate to the directory in where you checked out `pact-workshop-provider`, run `git clean -df && git checkout . && git checkout provider-step3` if you haven't already done so and follow the instructions in the **Provider's** readme file
+
+### Consumer Step 4 (Setting up CD)
+
+In this step we are going to set up a CD pipeline and we are going to use [circleci](https://circleci.com) for it.
+
+First of all fork these two repositories into your github account [pact-workshop-consumer](https://github.com/doktor500/pact-workshop-consumer) [pact-workshop-provider](https://github.com/doktor500/pact-workshop-provider).
+
+Navigate to [circleci](https://circleci.com), click on the "Sign up" button and follow the instructions to sign up with github.
+
+![Circleci Step 1](https://github.com/doktor500/pact-workshop-consumer/blob/consumer-step4/resources/circleci-step1.png "Circleci Step 1")
+
+![Circleci Step 2](https://github.com/doktor500/pact-workshop-consumer/blob/consumer-step4/resources/circleci-step2.png "Circleci Step 2")
+
+In the "Getting started" page, select both projects in the list of projects and click the "Follow" button.
+
+![Circleci Step 3](https://github.com/doktor500/pact-workshop-consumer/blob/consumer-step4/resources/circleci-step3.png "Circleci Step 3")
+
+You should finally see a page similar to this:
+
+![Circleci Step 4](https://github.com/doktor500/pact-workshop-consumer/blob/consumer-step4/resources/circleci-step4.png "Circleci Step 4")
+
+Now, let's create a new Personal API Token, (we will use that later to make calls to circleci API form the broker). Click in the icon on the top right hand side corner, and choose "User settings".
+
+![Circleci Step 5](https://github.com/doktor500/pact-workshop-consumer/blob/consumer-step4/resources/circleci-step5.png "Circleci Step 5")
+
+Create a new token and name it with something meaningful like "pact-broker", Copy the token to your clipboard, and save it in a safe place, we will make use of it later.
+
+![Circleci Step 6](https://github.com/doktor500/pact-workshop-consumer/blob/consumer-step4/resources/circleci-step6.png "Circleci Step 6")
+
+Now, let's create a YAML file to configure circleci.
+
+In the `pact-workshop-consumer` directory run `mkdir .circleci` and `touch .circleci/config.yml` to create the necessary configuration for circle-ci to work.
+
+The content of the `config.yml` file should look like:
+
+```yaml
+version: 2
+
+jobs:
+  build:
+    docker:
+      - image: circleci/ruby:2.6.3
+
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies
+          command: |
+            gem install bundler -v 2.0.1
+            bundle update --bundler
+            bundle install --jobs=4 --retry=3 --path vendor/bundle
+
+      - run:
+          name: Run tests
+          command: |
+            mkdir -p /tmp/test-results
+            TEST_FILES="$(circleci tests glob "spec/**/*_spec.rb" | circleci tests split --split-by=timings)"
+
+            bundle exec rspec \
+              --format progress \
+              --format RspecJunitFormatter \
+              --out /tmp/test-results/rspec.xml \
+              --format progress \
+              $TEST_FILES
+
+      - store_test_results:
+          path: /tmp/test-results
+
+      - store_artifacts:
+          path: /tmp/test-results
+          destination: test-results
+
+      - run:
+          name: Publish contracts
+          command: rake pact:publish
+
+      - run:
+          name: Check if contracts are verified
+          command: |
+            bundle exec pact-broker can-i-deploy \
+              --pacticipant ${PACT_PARTICIPANT} \
+              --broker-base-url ${PACT_BROKER_BASE_URL} \
+              --latest
+  deploy:
+    docker:
+      - image: circleci/ruby:2.6.3
+
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies
+          command: |
+            gem install bundler -v 2.0.1
+            bundle update --bundler
+            bundle install --jobs=4 --retry=3 --path vendor/bundle
+
+      - run:
+          name: Check if deployment can happen
+          command: |
+            bundle exec pact-broker can-i-deploy \
+              --pacticipant ${PACT_PARTICIPANT} \
+              --broker-base-url ${PACT_BROKER_BASE_URL} \
+              --latest --to production
+
+      - run:
+          name: Deploy to production
+          command: |
+            echo "Deploying to production"
+
+            bundle exec pact-broker create-version-tag \
+              --pacticipant ${PACT_PARTICIPANT} \
+              --broker-base-url ${PACT_BROKER_BASE_URL} \
+              --version ${CIRCLE_SHA1} \
+              --tag production
+
+workflows:
+  version: 2
+  pipeline:
+    jobs:
+      - build
+      - deploy:
+          requires:
+            - build
+          filters:
+            branches:
+              only: master
+```
+
+Take a look the circleci config file. You will see that there is a workflow composed by two different jobs.
+The first job named "build" performs the following actions:
+
+  - Checkouts the code
+  - Installs the project dependencies
+  - Runs the test and stores the test results
+  - Executes the `rake pact:publish` task and publishes the results to the broker
+  - Checks if the branch can be deployed using the `can-i-deploy` command
+
+The second job named "deploy" depends on the "build" job and it is only executed in master branch, it performs the following actions:
+
+  - Checkouts the code
+  - Installs the project dependencies
+  - Checks if the deployment to production can happen
+  - If the deployment can happen, it deploys and updates the "production" tag in the broker
+
+Navigate to the directory in where you checked out `pact-workshop-provider`, run `git clean -df && git checkout . && git checkout provider-step4` and follow the instructions in the **Provider's** readme file
