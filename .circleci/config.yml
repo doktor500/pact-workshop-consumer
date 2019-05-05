@@ -1,0 +1,91 @@
+version: 2
+
+jobs:
+  test:
+    working_directory: /tmp/project/
+    docker:
+      - image: circleci/ruby:2.6.3
+
+    steps:
+      - checkout
+
+      - run:
+          name: Install dependencies
+          command: bundle install
+
+      - run:
+          name: Run tests
+          command: |
+            mkdir -p /tmp/project/test-results
+            TEST_FILES="$(circleci tests glob "spec/**/*_spec.rb" | circleci tests split --split-by=timings)"
+
+            bundle exec rspec \
+              --format progress \
+              --format RspecJunitFormatter \
+              --out /tmp/project/test-results/rspec.xml \
+              --format progress \
+              $TEST_FILES
+
+      - store_test_results:
+          path: /tmp/project/test-results
+
+      - store_artifacts:
+          path: /tmp/project/test-results
+          destination: test-results
+
+      - run:
+          name: Publish contracts
+          command: rake pact:publish
+
+      - run:
+          name: Check if contracts are verified
+          command: |
+            bundle exec pact-broker can-i-deploy \
+              --pacticipant ${PACT_PARTICIPANT} \
+              --broker-base-url ${PACT_BROKER_BASE_URL} \
+              --version ${CIRCLE_SHA1} \
+              --to production
+
+  deploy:
+    working_directory: /tmp/project/
+    docker:
+      - image: circleci/ruby:2.6.3
+
+    steps:
+      - checkout
+
+      - run:
+          name: Install dependencies
+          command: bundle install
+
+      - run:
+          name: Check if deployment can happen
+          command: |
+            bundle exec pact-broker can-i-deploy \
+              --pacticipant ${PACT_PARTICIPANT} \
+              --broker-base-url ${PACT_BROKER_BASE_URL} \
+              --version ${CIRCLE_SHA1} \
+              --to production
+
+      - run:
+          name: Deploy to production
+          command: |
+            git push https://heroku:${HEROKU_API_KEY}@git.heroku.com/${HEROKU_APP_NAME}.git master
+
+            bundle exec pact-broker create-version-tag \
+              --pacticipant ${PACT_PARTICIPANT} \
+              --broker-base-url ${PACT_BROKER_BASE_URL} \
+              --version ${CIRCLE_SHA1} \
+              --tag production
+
+workflows:
+  version: 2
+  pipeline:
+    jobs:
+      - test
+      - deploy:
+          requires:
+            - test
+          filters:
+            branches:
+              only: master
