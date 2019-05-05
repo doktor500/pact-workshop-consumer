@@ -1,0 +1,48 @@
+{
+  "consumer": {
+    "name": "PaymentServiceClient"
+  },
+  "provider": {
+    "name": "PaymentService"
+  },
+  "interactions": [
+    {
+      "description": "a request for validating a payment method",
+      "request": {
+        "method": "get",
+        "path": "/validate-payment-method/1234123412341234"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "status": "valid"
+        }
+      }
+    },
+    {
+      "description": "a request for validating the payment method",
+      "providerState": "a black listed payment method",
+      "request": {
+        "method": "get",
+        "path": "/validate-payment-method/9999999999999999"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "status": "fraud"
+        }
+      }
+    }
+  ],
+  "metadata": {
+    "pactSpecification": {
+      "version": "2.0.0"
+    }
+  }
+}
