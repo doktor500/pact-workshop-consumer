@@ -1,0 +1,53 @@
+version: 2
+
+jobs:
+  consumer:
+    docker:
+      - image: circleci/ruby:2.4.1-node-browsers
+    working_directory: ~/repo
+    steps:
+      - checkout
+      - run:
+          name: Install consumer dependencies
+          command: |
+            cd client
+            bundle install --jobs=4 --retry=3 --path vendor/bundle
+      - run:
+          name: Run consumer tests
+          command: |
+            cd client
+            mkdir -p /tmp/test-results
+            TEST_FILES="$(circleci tests glob "spec/**/*_spec.rb" | circleci tests split --split-by=timings)"
+
+            bundle exec rspec \
+              --format progress \
+              --format RspecJunitFormatter \
+              --out /tmp/test-results/rspec.xml \
+              --format progress \
+              $TEST_FILES
+      - store_test_results:
+          path: /tmp/test-results
+      - store_artifacts:
+          path: /tmp/test-results
+          destination: test-results
+      - run:
+          name: Publish contracts
+          command: |
+            cd client
+            rake pact:publish
+      - run:
+          name: Deploy consumer
+          command: |
+            if [ "${CIRCLE_BRANCH}" == "master" ]; then
+              pact-broker can-i-deploy --pacticipant PaymentServiceClient \
+                --broker-base-url ${PACT_BROKER_BASE_URL} --latest --to production && echo "Deploying consumer"
+
+              pact-broker create-version-tag --pacticipant PaymentServiceClient \
+                --broker-base-url ${PACT_BROKER_BASE_URL} -e ${CIRCLE_SHA1} -t production"
+            fi
+
+workflows:
+  version: 2
+  build:
+    jobs:
+      - consumer
