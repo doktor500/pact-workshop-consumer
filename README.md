@@ -316,3 +316,11 @@ workflows:
             branches:
               only: master
 ```
+
+#### TODO document how to create an account on circle-ci
+#### TODO document how to setup a token on circle-ci so we can call the API in the hooks
+#### TODO document instructions to push both repositories to github
+#### TODO document instructions to setup the CD pipeline for both repositories on circle-ci
+#### TODO document how to setup the environment variables (PACT_BROKER_BASE_URL, PACT_BROKER_TOKEN, PACT_PARTICIPANT)
+#### TODO document how to create the global hook for the `contract_content_changed` event
+#### TODO document how to setup a specific hook for a consumer's feature branch
