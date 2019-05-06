@@ -174,3 +174,46 @@ Take a look at the second test, note that the `before` block contains now a new 
 Run `rspec` in the `pact-workshop-consumer` directory in order to update the consumer pacts and see the new pact in the `spec/pacts/paymentserviceclient-paymentservice.json` file.
 
 Navigate to the directory in where you checked out `pact-workshop-provider`, run `git clean -df && git checkout . && git checkout provider-step2` if you haven't already done so and follow the instructions in the **Provider's** readme file
+
+### Consumer Step 3 (Working with a PACT broker)
+
+#### Publishing contracts to the pact-broker
+
+In the `pact-workshop-consumer` directory add `gem "pact_broker-client"` this gem to the `Gemfile`, the file should look like:
+
+```ruby
+source 'https://rubygems.org'
+
+gem 'httparty'
+gem 'rack'
+gem 'rake'
+
+group :development, :test do
+  gem 'pact'
+  gem 'pact_broker-client'
+  gem 'rspec'
+  gem 'rspec_junit_formatter'
+end
+```
+
+In the `pact-workshop-consumer` directory execute `bundle install`
+
+Also in the `pact-workshop-consumer` create a `Rakefile` with the following content in order to publish the pacts to the broker.
+
+```ruby
+require 'pact_broker/client/tasks'
+
+PACT_BROKER_BASE_URL = ENV["PACT_BROKER_BASE_URL"] || "http://localhost:8000"
+PACT_BROKER_TOKEN    = ENV["PACT_BROKER_TOKEN"]
+
+PactBroker::Client::PublicationTask.new do |task|
+  task.pact_broker_base_url = PACT_BROKER_BASE_URL
+  task.pact_broker_token    = PACT_BROKER_TOKEN
+  task.consumer_version     = `git rev-parse HEAD`.strip
+  task.tag_with_git_branch  = true
+end
+```
+
+Now run `rake pact:publish` and navigate to `localhost:8000`, you should see the contract been published.
+
+Navigate to the directory in where you checked out `pact-workshop-provider`, run `git clean -df && git checkout . && git checkout provider-step3` if you haven't already done so and follow the instructions in the **Provider's** readme file
