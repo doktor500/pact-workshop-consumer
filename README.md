@@ -215,3 +215,65 @@ end
 Now run `rake pact:publish` and navigate to `localhost:8000`, you should see the contract been published.
 
 Navigate to the directory in where you checked out `pact-workshop-provider`, run `git clean -df && git checkout . && git checkout provider-step3` if you haven't already done so and follow the instructions in the **Provider's** readme file
+
+### Consumer Step 4 (Setting up CD)
+
+In the `pact-workshop-consumer` directory run `mkdir .circle-ci` and `touch .circle-ci/config.yml` to create the necessary configuration for circle-ci to work.
+
+The content of the `config.yml` file should look like:
+
+```yaml
+version: 2
+
+jobs:
+  consumer:
+    docker:
+      - image: circleci/ruby:2.4.1-node-browsers
+    working_directory: ~/repo
+    steps:
+      - checkout
+      - run:
+          name: Install consumer dependencies
+          command: |
+            cd client
+            bundle install --jobs=4 --retry=3 --path vendor/bundle
+      - run:
+          name: Run consumer tests
+          command: |
+            cd client
+            mkdir -p /tmp/test-results
+            TEST_FILES="$(circleci tests glob "spec/**/*_spec.rb" | circleci tests split --split-by=timings)"
+
+            bundle exec rspec \
+              --format progress \
+              --format RspecJunitFormatter \
+              --out /tmp/test-results/rspec.xml \
+              --format progress \
+              $TEST_FILES
+      - store_test_results:
+          path: /tmp/test-results
+      - store_artifacts:
+          path: /tmp/test-results
+          destination: test-results
+      - run:
+          name: Publish contracts
+          command: |
+            if [ "${CIRCLE_BRANCH}" == "master" ]; then
+              cd client
+              rake pact:publish
+            fi
+      - run:
+          name: Deploy consumer
+          command: |
+            if [ "${CIRCLE_BRANCH}" == "master" ]; then
+              pact-broker can-i-deploy --pacticipant PaymentServiceClient \
+                --broker-base-url http://46.101.49.17:8000/ --latest && echo "Deploying consumer"
+            fi
+
+workflows:
+  version: 2
+  consumer:
+    jobs:
+      - consumer
+
+```
