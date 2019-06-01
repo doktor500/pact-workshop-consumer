@@ -39,6 +39,22 @@
       }
     },
     {
+      "description": "a request for validating a new valid type of payment method",
+      "request": {
+        "method": "get",
+        "path": "/validate-payment-method/11112222333344445"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "status": "valid"
+        }
+      }
+    },
+    {
       "description": "a request for validating the payment method",
       "providerState": "a black listed payment method",
       "request": {

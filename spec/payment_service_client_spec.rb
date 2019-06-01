@@ -40,6 +40,25 @@ describe PaymentServiceClient, :pact => true do
     end
   end
 
+  context "given a new valid type of payment method" do
+    let(:valid_payment_method) { "11112222333344445" }
+    let(:response_body) do { status: :valid } end
+    before do
+      payment_service
+        .upon_receiving("a request for validating a new valid type of payment method")
+        .with(method: :get, path: "/validate-payment-method/#{valid_payment_method}")
+        .will_respond_with(
+          status: 200,
+          headers: {"Content-Type" => "application/json"},
+          body: response_body
+        )
+    end
+
+    it "the call to payment service returns a payment status response with status equal to valid" do
+      expect(subject.validate(valid_payment_method)).to eql({ "status" => "valid" })
+    end
+  end
+
   context "given a black listed payment method" do
     let(:invalid_payment_method) { "9999999999999999" }
     let(:response_body) do { status: :fraud } end
