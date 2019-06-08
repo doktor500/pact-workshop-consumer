@@ -44,7 +44,7 @@ Get familiarised with the code
 
 ![System diagram](resources/system-diagram.png "System diagram")
 
-You can run this app by executing `bundle exec rackup config.ru -p 3000` and then navigate to locahost:3000
+You can run this app by executing `bundle exec rackup config.ru -p 3000` and then navigate to http://localhost:3000/
 
 There are two microservices in this system. A `consumer` (this repository) and a `provider`.
 
